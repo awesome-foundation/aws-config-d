@@ -237,6 +237,84 @@ test_no_migrate_when_config_d_exists() {
     '
 }
 
+# --- drift detection tests ---
+
+test_bash_drift_warns_on_external_edit() {
+    docker run --rm -v "$SCRIPT_DIR":/src:ro bash:latest bash -c '
+        cp -r /src /work && cd /work
+        HOME=/tmp/fakehome && export HOME
+        mkdir -p "$HOME"
+        touch "$HOME/.bashrc"
+        ./install.sh > /dev/null 2>&1
+
+        # simulate external edit
+        echo "# sneaky edit" >> "$HOME/.aws/config"
+        sleep 1
+        touch "$HOME/.aws/config.d/00-defaults"
+
+        output=$(bash -c "source $HOME/.bashrc" 2>&1)
+        echo "$output" | grep -q "WARNING"
+    '
+}
+
+test_bash_drift_does_not_overwrite() {
+    docker run --rm -v "$SCRIPT_DIR":/src:ro bash:latest bash -c '
+        cp -r /src /work && cd /work
+        HOME=/tmp/fakehome && export HOME
+        mkdir -p "$HOME"
+        touch "$HOME/.bashrc"
+        ./install.sh > /dev/null 2>&1
+
+        # simulate external edit
+        echo "# sneaky edit" >> "$HOME/.aws/config"
+        sleep 1
+        touch "$HOME/.aws/config.d/00-defaults"
+
+        bash -c "source $HOME/.bashrc" > /dev/null 2>&1
+        # the sneaky edit should still be there (not overwritten)
+        grep -q "sneaky edit" "$HOME/.aws/config"
+    '
+}
+
+test_bash_drift_normal_rebuild_updates_hash() {
+    docker run --rm -v "$SCRIPT_DIR":/src:ro bash:latest bash -c '
+        cp -r /src /work && cd /work
+        HOME=/tmp/fakehome && export HOME
+        mkdir -p "$HOME"
+        touch "$HOME/.bashrc"
+        ./install.sh > /dev/null 2>&1
+
+        # record hash after install
+        hash1=$(cat "$HOME/.aws/config.d/.config.sha256")
+
+        # trigger a normal rebuild
+        sleep 1
+        echo "# new org" >> "$HOME/.aws/config.d/acme-corp"
+        bash -c "source $HOME/.bashrc" > /dev/null 2>&1
+
+        # hash should have changed
+        hash2=$(cat "$HOME/.aws/config.d/.config.sha256")
+        test "$hash1" != "$hash2"
+    '
+}
+
+test_fish_drift_warns_on_external_edit() {
+    docker run --rm --entrypoint bash -v "$SCRIPT_DIR":/src:ro purefish/docker-fish:latest -c '
+        cp -r /src /tmp/work && cd /tmp/work
+        HOME=/tmp/fakehome && export HOME
+        mkdir -p "$HOME/.config/fish"
+        ./install.sh > /dev/null 2>&1
+
+        # simulate external edit
+        echo "# sneaky edit" >> "$HOME/.aws/config"
+        sleep 1
+        touch "$HOME/.aws/config.d/00-defaults"
+
+        output=$(fish -c "source $HOME/.config/fish/config.fish" 2>&1)
+        echo "$output" | grep -q "WARNING"
+    '
+}
+
 # --- run all tests ---
 
 echo "=== bash ==="
@@ -265,6 +343,13 @@ run_test "migrate: preserves config content after rebuild" test_migrate_preserve
 run_test "migrate: rebuilt config starts with header comment" test_migrate_has_header_comment
 run_test "migrate: fresh install has header comment" test_fresh_install_has_header_comment
 run_test "migrate: skips when config.d already has files" test_no_migrate_when_config_d_exists
+
+echo ""
+echo "=== drift detection ==="
+run_test "bash: warns on external config edit" test_bash_drift_warns_on_external_edit
+run_test "bash: does not overwrite externally modified config" test_bash_drift_does_not_overwrite
+run_test "bash: normal rebuild updates hash" test_bash_drift_normal_rebuild_updates_hash
+run_test "fish: warns on external config edit" test_fish_drift_warns_on_external_edit
 
 echo ""
 echo "---"

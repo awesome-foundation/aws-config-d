@@ -12,7 +12,24 @@ if test -d ~/.aws/config.d
         end
     end
     if test $needs_rebuild = yes
-        cat ~/.aws/config.d/* > ~/.aws/config
-        echo "aws: rebuilt ~/.aws/config from config.d/"
+        # Check for external modifications before overwriting
+        if test -f ~/.aws/config; and test -f ~/.aws/config.d/.config.sha256
+            set -l current_hash (begin; sha256sum ~/.aws/config 2>/dev/null; or shasum -a 256 ~/.aws/config; end | cut -d' ' -f1)
+            set -l expected_hash (cat ~/.aws/config.d/.config.sha256)
+            if test "$current_hash" != "$expected_hash"
+                echo "aws: WARNING — ~/.aws/config was modified outside of config.d/"
+                echo "aws: possibly by 'aws configure sso' or manual editing."
+                echo "aws: reconcile changes into ~/.aws/config.d/ then run:"
+                echo "aws:   cat ~/.aws/config.d/* > ~/.aws/config"
+            else
+                cat ~/.aws/config.d/* > ~/.aws/config
+                begin; sha256sum ~/.aws/config 2>/dev/null; or shasum -a 256 ~/.aws/config; end | cut -d' ' -f1 > ~/.aws/config.d/.config.sha256
+                echo "aws: rebuilt ~/.aws/config from config.d/"
+            end
+        else
+            cat ~/.aws/config.d/* > ~/.aws/config
+            begin; sha256sum ~/.aws/config 2>/dev/null; or shasum -a 256 ~/.aws/config; end | cut -d' ' -f1 > ~/.aws/config.d/.config.sha256
+            echo "aws: rebuilt ~/.aws/config from config.d/"
+        end
     end
 end

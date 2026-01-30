@@ -96,5 +96,6 @@ fi
 
 # Trigger initial build
 cat ~/.aws/config.d/* > ~/.aws/config
+{ sha256sum ~/.aws/config 2>/dev/null || shasum -a 256 ~/.aws/config; } | cut -d' ' -f1 > ~/.aws/config.d/.config.sha256
 echo "built: ~/.aws/config from config.d/"
 echo "done!"

@@ -1,7 +1,26 @@
 # Auto-rebuild ~/.aws/config from ~/.aws/config.d/ if any source file is newer
 if [[ -d ~/.aws/config.d ]]; then
-  if [[ ! -f ~/.aws/config ]] || [[ -n "$(find ~/.aws/config.d -newer ~/.aws/config -print -quit 2>/dev/null)" ]]; then
-    cat ~/.aws/config.d/* > ~/.aws/config
-    echo "aws: rebuilt ~/.aws/config from config.d/"
+  _aws_hash_cmd() { sha256sum "$1" 2>/dev/null || shasum -a 256 "$1"; }
+  if [[ ! -f ~/.aws/config ]] || [[ -n "$(find ~/.aws/config.d -maxdepth 1 -type f ! -name '.*' -newer ~/.aws/config -print -quit 2>/dev/null)" ]]; then
+    # Check for external modifications before overwriting
+    if [[ -f ~/.aws/config ]] && [[ -f ~/.aws/config.d/.config.sha256 ]]; then
+      _aws_current_hash=$(_aws_hash_cmd ~/.aws/config | cut -d' ' -f1)
+      _aws_expected_hash=$(cat ~/.aws/config.d/.config.sha256)
+      if [[ "$_aws_current_hash" != "$_aws_expected_hash" ]]; then
+        echo "aws: WARNING — ~/.aws/config was modified outside of config.d/"
+        echo "aws: possibly by 'aws configure sso' or manual editing."
+        echo "aws: reconcile changes into ~/.aws/config.d/ then run:"
+        echo "aws:   cat ~/.aws/config.d/* > ~/.aws/config"
+      else
+        cat ~/.aws/config.d/* > ~/.aws/config
+        _aws_hash_cmd ~/.aws/config | cut -d' ' -f1 > ~/.aws/config.d/.config.sha256
+        echo "aws: rebuilt ~/.aws/config from config.d/"
+      fi
+    else
+      cat ~/.aws/config.d/* > ~/.aws/config
+      _aws_hash_cmd ~/.aws/config | cut -d' ' -f1 > ~/.aws/config.d/.config.sha256
+      echo "aws: rebuilt ~/.aws/config from config.d/"
+    fi
   fi
+  unset -f _aws_hash_cmd 2>/dev/null
 fi
