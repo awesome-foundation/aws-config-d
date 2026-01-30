@@ -1,51 +1,47 @@
 # aws-config-d
 
-Split your `~/.aws/config` into separate files per AWS organization.
+Split `~/.aws/config` into one file per organization. Concatenate on shell start. No dependencies.
 
-## The problem
+## Why this exists
 
-When working with multiple AWS organizations using SSO, `~/.aws/config` becomes a long, hard-to-navigate file mixing profiles from unrelated clients. The AWS CLI doesn't support `include` directives or a `config.d/` pattern natively.
+If you work with more than two AWS organizations, your `~/.aws/config` is a mess. SSO profiles, session blocks, and account IDs from unrelated clients all live in one file. You scroll past dozens of profiles to find the one you need, and every `aws configure sso` run dumps more into the pile.
 
-There has been [an open feature request](https://github.com/aws/aws-cli/issues/9036) against the AWS CLI since March 2022 to add native `config.d/` support. Despite initial interest from the SDK team, no implementation has shipped and PRs attempting to add it have been rejected — the feature would need to land across all AWS SDKs simultaneously. This tool exists because that upstream change isn't coming soon.
+The AWS CLI doesn't support `config.d/` natively. There's been [an open feature request](https://github.com/aws/aws-cli/issues/9036) since March 2022 asking for exactly this. The SDK team showed initial interest, then explained it would need to ship across all AWS SDKs simultaneously. PRs have been rejected. Nothing has shipped. Nothing is on the roadmap.
+
+This tool exists because that upstream change isn't coming.
 
 ## How it works
 
-Instead of maintaining a single `~/.aws/config`, you keep per-organization files in `~/.aws/config.d/`:
+You keep per-organization files in `~/.aws/config.d/`:
 
 ```
 ~/.aws/config.d/
-  00-defaults      # default profile, shared settings
-  acme-corp        # all Acme Corp profiles + SSO session
-  globex-inc       # all Globex Inc profiles + SSO session
-  old-client.off   # ignored — .off suffix disables it
-  disabled/        # move files here to disable without deleting
+  00-defaults      # shared settings, default region
+  acme-corp        # Acme Corp profiles + SSO session
+  globex-inc       # Globex Inc profiles + SSO session
+  old-client.off   # disabled — .off suffix skips it
+  disabled/        # park files here to stop rendering without deleting
 ```
 
-A shell hook runs at the start of each session and calls `aws-config-d auto`, which checks if any file in `config.d/` is newer than `~/.aws/config`. If so, it concatenates them all into `~/.aws/config` and prints a message:
+A shell hook calls `aws-config-d auto` at the start of each session. If any source file is newer than `~/.aws/config`, it concatenates them all and writes the result:
 
 ```
 aws: rebuilt ~/.aws/config from config.d/
 ```
 
-If nothing changed, it does nothing.
+If nothing changed, it does nothing. No overhead.
 
-A SHA-256 hash of the generated config is stored so that external modifications (e.g., `aws configure sso` editing `~/.aws/config` directly) are detected before being overwritten. If drift is found, you'll see a warning instead of a rebuild.
+A SHA-256 hash tracks what was last generated. If something else edits `~/.aws/config` directly (like `aws configure sso`), the next rebuild detects the drift and warns you instead of silently overwriting.
 
-## Supported shells
+## Install
 
-| Shell | Snippet file | RC file |
-|-------|-------------|---------|
-| bash  | `config.bash.snippet` | `~/.bashrc` |
-| zsh   | `config.zsh.snippet` | `~/.zshrc` |
-| fish  | `config.fish.snippet` | `~/.config/fish/config.fish` |
-
-## Quick install
+One line:
 
 ```bash
 bash -c 'tmp=$(mktemp -d) && git clone --depth 1 https://github.com/awesome-foundation/aws-config-d.git "$tmp/aws-config-d" && "$tmp/aws-config-d/install.sh" && rm -rf "$tmp"'
 ```
 
-Or clone and run manually:
+Or clone and run:
 
 ```bash
 git clone git@github.com:awesome-foundation/aws-config-d.git
@@ -53,50 +49,38 @@ cd aws-config-d
 ./install.sh
 ```
 
-The installer will:
-1. Create `~/.aws/config.d/` with a `00-defaults` header file and `disabled/` subfolder
-2. If `~/.aws/config` already exists and `config.d/` is empty, migrate it to `~/.aws/config.d/01-migrated-config` so nothing is lost
-3. Install the `aws-config-d` command to `~/.local/bin` (override with `INSTALL_DIR`)
-4. Detect your shell(s) and add the auto-rebuild hook to the appropriate RC file(s)
-5. Build `~/.aws/config` from the parts
+Here's what that does:
 
-If you had an existing config, you'll be prompted to split it into per-organization files at your convenience.
+1. Creates `~/.aws/config.d/` with a `00-defaults` header and a `disabled/` folder
+2. Migrates your existing `~/.aws/config` into `config.d/01-migrated-config` (if present and config.d is empty)
+3. Installs the `aws-config-d` command to `~/.local/bin` (override with `INSTALL_DIR`)
+4. Adds the auto-rebuild hook to your shell's RC file (bash, zsh, and fish all supported)
+5. Builds `~/.aws/config` from the parts
 
-The installer checks for all three shells and installs hooks for each one it finds, so if you use multiple shells they'll all work.
+Re-running the installer is safe. It updates the binary, skips hooks that are already installed, and won't touch your config files.
 
-Re-running the installer is safe — it always updates `aws-config-d` to the latest version, skips hooks that are already installed, and won't overwrite your config files.
+### Shells supported
 
-### Manual
+| Shell | RC file |
+|-------|---------|
+| bash  | `~/.bashrc` |
+| zsh   | `~/.zshrc` |
+| fish  | `~/.config/fish/config.fish` |
 
-1. Create `~/.aws/config.d/` and move your profiles into per-organization files:
+### Manual install
 
-```bash
-mkdir -p ~/.aws/config.d
-```
+If you'd rather do it yourself:
 
-2. Copy the `aws-config-d` script to somewhere on your `PATH`:
-
-```bash
-cp bin/aws-config-d ~/.local/bin/aws-config-d
-```
-
-3. Add the contents of the appropriate snippet file to your shell's RC file:
-
-   - **bash**: add `config.bash.snippet` to `~/.bashrc`
-   - **zsh**: add `config.zsh.snippet` to `~/.zshrc`
-   - **fish**: add `config.fish.snippet` to `~/.config/fish/config.fish`
-
-4. Rebuild the config:
-
-```bash
-aws-config-d force
-```
+1. `mkdir -p ~/.aws/config.d`
+2. `cp bin/aws-config-d ~/.local/bin/`
+3. Add the contents of the appropriate snippet file (`config.bash.snippet`, `config.zsh.snippet`, or `config.fish.snippet`) to your RC file
+4. `aws-config-d force`
 
 ## Usage
 
-### Adding a new organization
+### Add a new organization
 
-Create a new file in `~/.aws/config.d/` with the organization's profiles:
+Drop a file in `~/.aws/config.d/`:
 
 ```ini
 # ~/.aws/config.d/my-new-client
@@ -112,33 +96,34 @@ sso_region=eu-west-1
 sso_registration_scopes=sso:account:access
 ```
 
-The next time you open a shell, the config will be rebuilt automatically.
+Open a new shell. Done.
 
-### Disabling and enabling profiles
+### Enable and disable profiles
 
 ```bash
 aws-config-d disable acme-corp    # moves to disabled/
 aws-config-d enable acme-corp     # moves back
-aws-config-d list                 # shows enabled and disabled
+aws-config-d list                 # shows what's on and off
+aws-config-d rm old-client        # permanently deletes
 ```
 
-You can also disable manually by renaming with a `.off` suffix or moving to `disabled/`. The `enable` command understands both conventions. The `disable` command always moves to `disabled/`.
+You can also disable manually: rename with `.off` or move to `disabled/`. The `enable` command understands both. `disable` always moves to `disabled/`.
 
-### Ordering
-
-Files are concatenated in lexicographic order. Use numeric prefixes to control ordering (e.g., `00-defaults` runs first).
-
-### Forcing a rebuild
+### Force a rebuild
 
 ```bash
 aws-config-d force
 ```
 
-This rebuilds `~/.aws/config` unconditionally and resets the drift hash.
+Rebuilds unconditionally and resets the drift hash.
+
+### File ordering
+
+Files concatenate in lexicographic order. Prefix with numbers to control it (`00-defaults` always goes first).
 
 ### Drift detection
 
-If `~/.aws/config` is modified outside of `config.d/` (e.g., by `aws configure sso` or manual editing), the next auto-rebuild will detect the mismatch and warn you instead of overwriting:
+If `~/.aws/config` gets edited outside of `config.d/` (by `aws configure sso`, by hand, by another tool), the next auto-rebuild catches it:
 
 ```
 aws: WARNING — ~/.aws/config was modified outside of config.d/
@@ -147,37 +132,24 @@ aws: reconcile changes into ~/.aws/config.d/ then run:
 aws:   aws-config-d force
 ```
 
-Copy the relevant changes into the appropriate file under `config.d/`, then run `aws-config-d force` to rebuild.
+Copy the relevant changes into the right file under `config.d/`, then `aws-config-d force`.
 
 ## Testing
 
-Tests run each shell in an isolated Docker container to verify the install and rebuild hooks work correctly. Requires Docker.
+42 tests across bash, zsh, and fish, each running in isolated Docker containers. Requires Docker.
 
 ```bash
 ./test.sh
 ```
 
-This runs 42 tests across bash, zsh, and fish covering:
-- Hook installation into the correct RC file
-- Config rebuild when a source file is touched
-- No rebuild when nothing changed
-- Idempotent installs (running twice doesn't duplicate the hook)
-- Generated config contains all profiles from all source files
-- Migration of existing `~/.aws/config`
-- `aws-config-d force` unconditional rebuild
-- Drift detection when config is modified externally
-- Disabling profiles via `.off` suffix and `disabled/` directory
-- `list`, `enable`, and `disable` commands
-- Re-running installer updates the binary to latest version
-
-Docker images used: `bash:latest`, `zshusers/zsh:latest`, `purefish/docker-fish:latest`.
+Covers install hooks, rebuild triggers, idempotency, migration, drift detection, enable/disable/rm commands, and installer upgrades.
 
 ## Limitations
 
-- The AWS CLI does not support `config.d/` natively. This is a workaround that concatenates files.
-- Editing `~/.aws/config` directly (e.g., via `aws configure sso`) will trigger a drift warning on the next rebuild. Reconcile changes into `config.d/` and run `aws-config-d force`.
-- `~/.aws/credentials` is not managed by this tool. You could apply the same pattern with a `credentials.d/` directory if needed.
+- This is a workaround. The AWS CLI doesn't support `config.d/` natively; this tool concatenates files.
+- `aws configure sso` edits `~/.aws/config` directly. That triggers a drift warning. Reconcile into `config.d/` and force-rebuild.
+- `~/.aws/credentials` is not managed. Same pattern would work with a `credentials.d/` if you need it.
 
 ## License
 
-[MPL-2.0](LICENSE) — you can use, modify, and distribute this tool freely. Modifications to the source files must remain open and include attribution.
+[MPL-2.0](LICENSE)
