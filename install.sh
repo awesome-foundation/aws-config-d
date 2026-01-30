@@ -6,16 +6,28 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Create config.d directory
 mkdir -p ~/.aws/config.d
 
-# Copy example files (skip if real files already exist)
-for f in "$SCRIPT_DIR"/config.d/*; do
-    basename="$(basename "$f")"
-    if [ -f ~/.aws/config.d/"$basename" ]; then
-        echo "skip: ~/.aws/config.d/$basename already exists"
-    else
-        cp "$f" ~/.aws/config.d/"$basename"
-        echo "copied: ~/.aws/config.d/$basename"
-    fi
-done
+# Migrate existing config if present and config.d is empty
+if [ -f ~/.aws/config ] && [ -z "$(ls -A ~/.aws/config.d 2>/dev/null)" ]; then
+    cp ~/.aws/config ~/.aws/config.d/00-defaults
+    echo "migrated: ~/.aws/config -> ~/.aws/config.d/00-defaults"
+    echo ""
+    echo "  Your existing config has been moved to ~/.aws/config.d/00-defaults."
+    echo "  Split it into per-organization files under ~/.aws/config.d/ at your convenience."
+    echo "  For example, move [profile acme-*] and [sso-session acme] sections"
+    echo "  into ~/.aws/config.d/acme, then remove them from 00-defaults."
+    echo ""
+else
+    # Copy example files (skip if real files already exist)
+    for f in "$SCRIPT_DIR"/config.d/*; do
+        basename="$(basename "$f")"
+        if [ -f ~/.aws/config.d/"$basename" ]; then
+            echo "skip: ~/.aws/config.d/$basename already exists"
+        else
+            cp "$f" ~/.aws/config.d/"$basename"
+            echo "copied: ~/.aws/config.d/$basename"
+        fi
+    done
+fi
 
 # Detect shell and install hook
 install_hook() {

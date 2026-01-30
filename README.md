@@ -33,18 +33,26 @@ If nothing changed, it does nothing.
 | zsh   | `config.zsh.snippet` | `~/.zshrc` |
 | fish  | `config.fish.snippet` | `~/.config/fish/config.fish` |
 
-## Setup
-
-### Automatic
+## Quick install
 
 ```bash
+bash -c 'tmp=$(mktemp -d) && git clone --depth 1 https://github.com/awesome-foundation/aws-cli-config-d.git "$tmp/aws-cli-config-d" && "$tmp/aws-cli-config-d/install.sh" && rm -rf "$tmp"'
+```
+
+Or clone and run manually:
+
+```bash
+git clone git@github.com:awesome-foundation/aws-cli-config-d.git
+cd aws-cli-config-d
 ./install.sh
 ```
 
-This will:
-1. Create `~/.aws/config.d/` with example files (won't overwrite existing ones)
+The installer will:
+1. If `~/.aws/config` already exists and `config.d/` is empty, migrate it to `~/.aws/config.d/00-defaults` so nothing is lost
 2. Detect your shell(s) and add the auto-rebuild hook to the appropriate RC file(s)
 3. Build `~/.aws/config` from the parts
+
+If you had an existing config, you'll be prompted to split it into per-organization files at your convenience.
 
 The installer checks for all three shells and installs hooks for each one it finds, so if you use multiple shells they'll all work.
 
