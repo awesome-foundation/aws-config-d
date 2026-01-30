@@ -37,20 +37,18 @@ else
     done
 fi
 
-# Detect shell and install hook
 # Install aws-config-d command
-install_dir="${INSTALL_DIR:-/usr/local/bin}"
-if [ -w "$install_dir" ]; then
-    cp "$SCRIPT_DIR/bin/aws-config-d" "$install_dir/aws-config-d"
-    echo "installed: aws-config-d -> $install_dir/aws-config-d"
-else
-    mkdir -p ~/.local/bin
-    cp "$SCRIPT_DIR/bin/aws-config-d" ~/.local/bin/aws-config-d
-    install_dir=~/.local/bin
-    echo "installed: aws-config-d -> $install_dir/aws-config-d"
-    # Ensure ~/.local/bin is in PATH for current session
-    export PATH="$install_dir:$PATH"
-fi
+install_dir="${INSTALL_DIR:-$HOME/.local/bin}"
+mkdir -p "$install_dir"
+cp "$SCRIPT_DIR/bin/aws-config-d" "$install_dir/aws-config-d"
+chmod +x "$install_dir/aws-config-d"
+echo "installed: aws-config-d -> $install_dir/aws-config-d"
+
+# Ensure install dir is in PATH for current session
+case ":$PATH:" in
+    *:"$install_dir":*) ;;
+    *) export PATH="$install_dir:$PATH" ;;
+esac
 
 # Detect shell and install hook
 install_hook() {

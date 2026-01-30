@@ -43,7 +43,7 @@ test_bash_rebuild_on_change() {
         touch "$HOME/.aws/config.d/00-defaults"
 
         # source the rc file and capture output
-        output=$(bash -c "source $HOME/.bashrc" 2>&1)
+        output=$(PATH="$HOME/.local/bin:$PATH" bash -c "source $HOME/.bashrc" 2>&1)
         echo "$output" | grep -q "aws: rebuilt"
     '
 }
@@ -57,7 +57,7 @@ test_bash_no_rebuild_when_unchanged() {
         ./install.sh > /dev/null 2>&1
 
         # source without changes — should produce no rebuild message
-        output=$(bash -c "source $HOME/.bashrc" 2>&1)
+        output=$(PATH="$HOME/.local/bin:$PATH" bash -c "source $HOME/.bashrc" 2>&1)
         if echo "$output" | grep -q "aws: rebuilt"; then exit 1; fi
     '
 }
@@ -113,7 +113,7 @@ test_zsh_rebuild_on_change() {
         sleep 1
         touch "$HOME/.aws/config.d/00-defaults"
 
-        output=$(zsh -c "source $HOME/.zshrc" 2>&1)
+        output=$(PATH="$HOME/.local/bin:$PATH" zsh -c "source $HOME/.zshrc" 2>&1)
         echo "$output" | grep -q "aws: rebuilt"
     '
 }
@@ -127,7 +127,7 @@ test_zsh_no_rebuild_when_unchanged() {
         touch "$HOME/.zshrc"
         bash ./install.sh > /dev/null 2>&1
 
-        output=$(zsh -c "source $HOME/.zshrc" 2>&1)
+        output=$(PATH="$HOME/.local/bin:$PATH" zsh -c "source $HOME/.zshrc" 2>&1)
         if echo "$output" | grep -q "aws: rebuilt"; then exit 1; fi
     '
 }
@@ -252,7 +252,7 @@ test_bash_drift_warns_on_external_edit() {
         sleep 1
         touch "$HOME/.aws/config.d/00-defaults"
 
-        output=$(bash -c "source $HOME/.bashrc" 2>&1)
+        output=$(PATH="$HOME/.local/bin:$PATH" bash -c "source $HOME/.bashrc" 2>&1)
         echo "$output" | grep -q "WARNING"
     '
 }
@@ -270,7 +270,7 @@ test_bash_drift_does_not_overwrite() {
         sleep 1
         touch "$HOME/.aws/config.d/00-defaults"
 
-        bash -c "source $HOME/.bashrc" > /dev/null 2>&1
+        PATH="$HOME/.local/bin:$PATH" bash -c "source $HOME/.bashrc" > /dev/null 2>&1
         # the sneaky edit should still be there (not overwritten)
         grep -q "sneaky edit" "$HOME/.aws/config"
     '
@@ -290,7 +290,7 @@ test_bash_drift_normal_rebuild_updates_hash() {
         # trigger a normal rebuild
         sleep 1
         echo "# new org" >> "$HOME/.aws/config.d/acme-corp"
-        bash -c "source $HOME/.bashrc" > /dev/null 2>&1
+        PATH="$HOME/.local/bin:$PATH" bash -c "source $HOME/.bashrc" > /dev/null 2>&1
 
         # hash should have changed
         hash2=$(cat "$HOME/.aws/config.d/.config.sha256")
@@ -326,6 +326,7 @@ test_force_rebuild() {
         ./install.sh > /dev/null 2>&1
 
         # force rebuild even though nothing changed
+        export PATH="$HOME/.local/bin:$PATH"
         output=$(aws-config-d --force 2>&1)
         echo "$output" | grep -q "aws: rebuilt"
     '
@@ -343,6 +344,7 @@ test_force_resets_drift() {
         echo "# sneaky edit" >> "$HOME/.aws/config"
 
         # force should overwrite despite drift
+        export PATH="$HOME/.local/bin:$PATH"
         aws-config-d --force > /dev/null 2>&1
         if grep -q "sneaky edit" "$HOME/.aws/config"; then exit 1; fi
     '

@@ -52,7 +52,7 @@ cd aws-cli-config-d
 The installer will:
 1. Create `~/.aws/config.d/` with a `00-defaults` header file
 2. If `~/.aws/config` already exists and `config.d/` is empty, migrate it to `~/.aws/config.d/01-migrated-config` so nothing is lost
-3. Install the `aws-config-d` command to `/usr/local/bin` (or `~/.local/bin`)
+3. Install the `aws-config-d` command to `~/.local/bin` (override with `INSTALL_DIR`)
 4. Detect your shell(s) and add the auto-rebuild hook to the appropriate RC file(s)
 5. Build `~/.aws/config` from the parts
 
@@ -71,7 +71,7 @@ mkdir -p ~/.aws/config.d
 2. Copy the `aws-config-d` script to somewhere on your `PATH`:
 
 ```bash
-cp bin/aws-config-d /usr/local/bin/aws-config-d
+cp bin/aws-config-d ~/.local/bin/aws-config-d
 ```
 
 3. Add the contents of the appropriate snippet file to your shell's RC file:
