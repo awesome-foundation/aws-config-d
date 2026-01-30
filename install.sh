@@ -13,7 +13,7 @@ if [ ! -f ~/.aws/config.d/00-defaults ]; then
 fi
 
 # Migrate existing config if present and no other config.d files exist yet
-existing_files=$(find ~/.aws/config.d -maxdepth 1 -type f ! -name '00-defaults' 2>/dev/null)
+existing_files=$(find ~/.aws/config.d -maxdepth 1 -type f ! -name '00-defaults' ! -name '*.example' 2>/dev/null)
 if [ -f ~/.aws/config ] && [ -z "$existing_files" ]; then
     cp ~/.aws/config ~/.aws/config.d/01-migrated-config
     echo "migrated: ~/.aws/config -> ~/.aws/config.d/01-migrated-config"
@@ -23,18 +23,13 @@ if [ -f ~/.aws/config ] && [ -z "$existing_files" ]; then
     echo "  For example, move [profile acme-*] and [sso-session acme] sections"
     echo "  into ~/.aws/config.d/acme, then remove them from 01-migrated-config."
     echo ""
-else
-    # Copy example files (skip if real files already exist)
-    for f in "$SCRIPT_DIR"/config.d/*; do
+elif [ -z "$existing_files" ]; then
+    # Fresh install with no existing config — copy example files
+    for f in "$SCRIPT_DIR"/config.d/*.example; do
         [ -f "$f" ] || continue
         basename="$(basename "$f")"
-        if [ "$basename" = "00-defaults" ]; then continue; fi
-        if [ -f ~/.aws/config.d/"$basename" ]; then
-            echo "skip: ~/.aws/config.d/$basename already exists"
-        else
-            cp "$f" ~/.aws/config.d/"$basename"
-            echo "copied: ~/.aws/config.d/$basename"
-        fi
+        cp "$f" ~/.aws/config.d/"$basename"
+        echo "copied: ~/.aws/config.d/$basename"
     done
 fi
 

@@ -81,9 +81,10 @@ test_bash_config_content() {
         mkdir -p "$HOME"
         touch "$HOME/.bashrc"
         ./install.sh > /dev/null 2>&1
-        grep -q "\[profile acme-dev\]" "$HOME/.aws/config" &&
-        grep -q "\[profile globex-sandbox\]" "$HOME/.aws/config" &&
-        grep -q "managed by" "$HOME/.aws/config"
+        # fresh install only has 00-defaults and .example files
+        grep -q "managed by" "$HOME/.aws/config" &&
+        # .example files should NOT be in the rendered config
+        if grep -q "\[profile acme-dev\]" "$HOME/.aws/config"; then exit 1; fi
     '
 }
 
@@ -287,9 +288,9 @@ test_bash_drift_normal_rebuild_updates_hash() {
         # record hash after install
         hash1=$(cat "$HOME/.aws/config.d/.config.sha256")
 
-        # trigger a normal rebuild
+        # trigger a normal rebuild by adding a real profile file
         sleep 1
-        echo "# new org" >> "$HOME/.aws/config.d/acme-corp"
+        echo "[profile test-org]" > "$HOME/.aws/config.d/test-org"
         PATH="$HOME/.local/bin:$PATH" bash -c "source $HOME/.bashrc" > /dev/null 2>&1
 
         # hash should have changed
@@ -389,9 +390,14 @@ test_off_suffix_excluded() {
         ./install.sh > /dev/null 2>&1
         export PATH="$HOME/.local/bin:$PATH"
 
+        # create real profile files
+        echo "[profile acme-dev]" > "$HOME/.aws/config.d/acme-corp"
+        echo "[profile globex-sandbox]" > "$HOME/.aws/config.d/globex-inc"
+        aws-config-d force > /dev/null 2>&1
+
         # disable acme-corp by renaming with .off suffix
         mv "$HOME/.aws/config.d/acme-corp" "$HOME/.aws/config.d/acme-corp.off"
-        aws-config-d --force > /dev/null 2>&1
+        aws-config-d force > /dev/null 2>&1
 
         # acme profiles should be gone, globex should remain
         if grep -q "\[profile acme-dev\]" "$HOME/.aws/config"; then exit 1; fi
@@ -408,10 +414,14 @@ test_disabled_dir_excluded() {
         ./install.sh > /dev/null 2>&1
         export PATH="$HOME/.local/bin:$PATH"
 
+        # create real profile files
+        echo "[profile acme-dev]" > "$HOME/.aws/config.d/acme-corp"
+        echo "[profile globex-sandbox]" > "$HOME/.aws/config.d/globex-inc"
+        aws-config-d force > /dev/null 2>&1
+
         # disable globex by moving to disabled/
-        mkdir -p "$HOME/.aws/config.d/disabled"
         mv "$HOME/.aws/config.d/globex-inc" "$HOME/.aws/config.d/disabled/globex-inc"
-        aws-config-d --force > /dev/null 2>&1
+        aws-config-d force > /dev/null 2>&1
 
         # globex profiles should be gone, acme should remain
         if grep -q "\[profile globex-sandbox\]" "$HOME/.aws/config"; then exit 1; fi
@@ -459,6 +469,7 @@ test_list_shows_enabled_and_disabled() {
         ./install.sh > /dev/null 2>&1
         export PATH="$HOME/.local/bin:$PATH"
 
+        echo "[profile acme-dev]" > "$HOME/.aws/config.d/acme-corp"
         output=$(aws-config-d list 2>&1)
         echo "$output" | grep -q "enabled:" &&
         echo "$output" | grep -q "acme-corp" &&
@@ -475,6 +486,7 @@ test_disable_moves_to_disabled_dir() {
         ./install.sh > /dev/null 2>&1
         export PATH="$HOME/.local/bin:$PATH"
 
+        echo "[profile acme-dev]" > "$HOME/.aws/config.d/acme-corp"
         aws-config-d disable acme-corp > /dev/null 2>&1
         test -f "$HOME/.aws/config.d/disabled/acme-corp" &&
         test ! -f "$HOME/.aws/config.d/acme-corp"
@@ -490,6 +502,7 @@ test_enable_from_disabled_dir() {
         ./install.sh > /dev/null 2>&1
         export PATH="$HOME/.local/bin:$PATH"
 
+        echo "[profile acme-dev]" > "$HOME/.aws/config.d/acme-corp"
         aws-config-d disable acme-corp > /dev/null 2>&1
         aws-config-d enable acme-corp > /dev/null 2>&1
         test -f "$HOME/.aws/config.d/acme-corp" &&
@@ -506,8 +519,8 @@ test_enable_from_off_suffix() {
         ./install.sh > /dev/null 2>&1
         export PATH="$HOME/.local/bin:$PATH"
 
-        # manually create a .off file
-        mv "$HOME/.aws/config.d/acme-corp" "$HOME/.aws/config.d/acme-corp.off"
+        # create a .off file directly
+        echo "[profile acme-dev]" > "$HOME/.aws/config.d/acme-corp.off"
         aws-config-d enable acme-corp > /dev/null 2>&1
         test -f "$HOME/.aws/config.d/acme-corp" &&
         test ! -f "$HOME/.aws/config.d/acme-corp.off"
@@ -537,9 +550,56 @@ test_list_shows_disabled_files() {
         ./install.sh > /dev/null 2>&1
         export PATH="$HOME/.local/bin:$PATH"
 
+        echo "[profile acme-dev]" > "$HOME/.aws/config.d/acme-corp"
         aws-config-d disable acme-corp > /dev/null 2>&1
         output=$(aws-config-d list 2>&1)
         echo "$output" | grep -q "disabled/acme-corp"
+    '
+}
+
+# --- example profile tests ---
+
+test_fresh_install_copies_examples() {
+    docker run --rm -v "$SCRIPT_DIR":/src:ro bash:latest bash -c '
+        cp -r /src /work && cd /work
+        HOME=/tmp/fakehome && export HOME
+        mkdir -p "$HOME"
+        touch "$HOME/.bashrc"
+        ./install.sh > /tmp/out 2>&1
+        # .example files should exist in config.d
+        test -f "$HOME/.aws/config.d/acme-corp.example" &&
+        test -f "$HOME/.aws/config.d/globex-inc.example"
+    '
+}
+
+test_examples_not_copied_when_user_files_exist() {
+    docker run --rm -v "$SCRIPT_DIR":/src:ro bash:latest bash -c '
+        cp -r /src /work && cd /work
+        HOME=/tmp/fakehome && export HOME
+        mkdir -p "$HOME/.aws/config.d"
+        touch "$HOME/.bashrc"
+        echo "[profile myorg]" > "$HOME/.aws/config.d/myorg"
+        ./install.sh > /tmp/out 2>&1
+        # .example files should NOT be copied
+        test ! -f "$HOME/.aws/config.d/acme-corp.example" &&
+        test ! -f "$HOME/.aws/config.d/globex-inc.example"
+    '
+}
+
+test_examples_not_rendered_into_config() {
+    docker run --rm -v "$SCRIPT_DIR":/src:ro bash:latest bash -c '
+        cp -r /src /work && cd /work
+        HOME=/tmp/fakehome && export HOME
+        mkdir -p "$HOME"
+        touch "$HOME/.bashrc"
+        ./install.sh > /dev/null 2>&1
+        export PATH="$HOME/.local/bin:$PATH"
+        # add a real profile so config is not just the header
+        echo "[profile real-org]" > "$HOME/.aws/config.d/real-org"
+        aws-config-d force > /dev/null 2>&1
+        # .example content should not appear in rendered config
+        if grep -q "acme" "$HOME/.aws/config"; then exit 1; fi
+        grep -q "\[profile real-org\]" "$HOME/.aws/config"
     '
 }
 
@@ -594,6 +654,12 @@ run_test "enable: restores from disabled/" test_enable_from_disabled_dir
 run_test "enable: restores from .off suffix" test_enable_from_off_suffix
 run_test "disable: prevents disabling 00-defaults" test_disable_prevents_00_defaults
 run_test "list: shows disabled files" test_list_shows_disabled_files
+
+echo ""
+echo "=== example profiles ==="
+run_test "example: fresh install copies .example files" test_fresh_install_copies_examples
+run_test "example: not copied when user files exist" test_examples_not_copied_when_user_files_exist
+run_test "example: .example files not rendered into config" test_examples_not_rendered_into_config
 
 echo ""
 echo "=== drift detection ==="

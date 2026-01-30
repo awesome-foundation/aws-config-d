@@ -8,11 +8,11 @@ HASH_FILE="$CONFIG_D/.config.sha256"
 _hash() { { sha256sum "$1" 2>/dev/null || shasum -a 256 "$1"; } | cut -d' ' -f1; }
 
 _sources() {
-    # List enabled config files: skip dotfiles, *.off files, and directories
+    # List enabled config files: skip dotfiles, *.off, *.example, and directories
     for f in "$CONFIG_D"/*; do
         [ -f "$f" ] || continue
         case "$(basename "$f")" in
-            .*|*.off) continue ;;
+            .*|*.off|*.example) continue ;;
         esac
         echo "$f"
     done
