@@ -6,6 +6,8 @@ Split your `~/.aws/config` into separate files per AWS organization.
 
 When working with multiple AWS organizations using SSO, `~/.aws/config` becomes a long, hard-to-navigate file mixing profiles from unrelated clients. The AWS CLI doesn't support `include` directives or a `config.d/` pattern natively.
 
+There has been [an open feature request](https://github.com/aws/aws-cli/issues/9036) against the AWS CLI since March 2022 to add native `config.d/` support. Despite initial interest from the SDK team, no implementation has shipped and PRs attempting to add it have been rejected — the feature would need to land across all AWS SDKs simultaneously. This tool exists because that upstream change isn't coming soon.
+
 ## How it works
 
 Instead of maintaining a single `~/.aws/config`, you keep per-organization files in `~/.aws/config.d/`:
@@ -155,7 +157,7 @@ Tests run each shell in an isolated Docker container to verify the install and r
 ./test.sh
 ```
 
-This runs 32 tests across bash, zsh, and fish covering:
+This runs 42 tests across bash, zsh, and fish covering:
 - Hook installation into the correct RC file
 - Config rebuild when a source file is touched
 - No rebuild when nothing changed
