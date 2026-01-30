@@ -175,3 +175,7 @@ Docker images used: `bash:latest`, `zshusers/zsh:latest`, `purefish/docker-fish:
 - The AWS CLI does not support `config.d/` natively. This is a workaround that concatenates files.
 - Editing `~/.aws/config` directly (e.g., via `aws configure sso`) will trigger a drift warning on the next rebuild. Reconcile changes into `config.d/` and run `aws-config-d --force`.
 - `~/.aws/credentials` is not managed by this tool. You could apply the same pattern with a `credentials.d/` directory if needed.
+
+## License
+
+[MPL-2.0](LICENSE) — you can use, modify, and distribute this tool freely. Modifications to the source files must remain open and include attribution.
