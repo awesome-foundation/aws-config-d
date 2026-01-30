@@ -17,7 +17,7 @@ Instead of maintaining a single `~/.aws/config`, you keep per-organization files
   globex-inc      # all Globex Inc profiles + SSO session
 ```
 
-A fish shell hook runs at the start of each session and checks if any file in `config.d/` is newer than `~/.aws/config`. If so, it concatenates them all into `~/.aws/config` and prints a message:
+A shell hook runs at the start of each session and checks if any file in `config.d/` is newer than `~/.aws/config`. If so, it concatenates them all into `~/.aws/config` and prints a message:
 
 ```
 aws: rebuilt ~/.aws/config from config.d/
@@ -25,18 +25,28 @@ aws: rebuilt ~/.aws/config from config.d/
 
 If nothing changed, it does nothing.
 
+## Supported shells
+
+| Shell | Snippet file | RC file |
+|-------|-------------|---------|
+| bash  | `config.bash.snippet` | `~/.bashrc` |
+| zsh   | `config.zsh.snippet` | `~/.zshrc` |
+| fish  | `config.fish.snippet` | `~/.config/fish/config.fish` |
+
 ## Setup
 
 ### Automatic
 
-```fish
-./install.fish
+```bash
+./install.sh
 ```
 
 This will:
-1. Create `~/.aws/config.d/` with example files
-2. Add the auto-rebuild hook to your `~/.config/fish/config.fish`
+1. Create `~/.aws/config.d/` with example files (won't overwrite existing ones)
+2. Detect your shell(s) and add the auto-rebuild hook to the appropriate RC file(s)
 3. Build `~/.aws/config` from the parts
+
+The installer checks for all three shells and installs hooks for each one it finds, so if you use multiple shells they'll all work.
 
 ### Manual
 
@@ -46,7 +56,11 @@ This will:
 mkdir -p ~/.aws/config.d
 ```
 
-2. Add the contents of `config.fish.snippet` to the top of your `~/.config/fish/config.fish`.
+2. Add the contents of the appropriate snippet file to your shell's RC file:
+
+   - **bash**: add `config.bash.snippet` to `~/.bashrc`
+   - **zsh**: add `config.zsh.snippet` to `~/.zshrc`
+   - **fish**: add `config.fish.snippet` to `~/.config/fish/config.fish`
 
 3. Rebuild the config:
 
@@ -74,7 +88,7 @@ sso_region=eu-west-1
 sso_registration_scopes=sso:account:access
 ```
 
-The next time you open a fish shell, the config will be rebuilt automatically.
+The next time you open a shell, the config will be rebuilt automatically.
 
 ### Ordering
 
@@ -90,18 +104,22 @@ touch ~/.aws/config.d/00-defaults
 
 Then open a new shell session.
 
-## Adapting for other shells
+## Testing
 
-The fish-specific hook is in `config.fish.snippet`. The equivalent for bash/zsh in your `.bashrc` or `.zshrc`:
+Tests run each shell in an isolated Docker container to verify the install and rebuild hooks work correctly. Requires Docker.
 
 ```bash
-if [ -d ~/.aws/config.d ]; then
-  if [ ! -f ~/.aws/config ] || [ -n "$(find ~/.aws/config.d -newer ~/.aws/config -print -quit 2>/dev/null)" ]; then
-    cat ~/.aws/config.d/* > ~/.aws/config
-    echo "aws: rebuilt ~/.aws/config from config.d/"
-  fi
-fi
+./test.sh
 ```
+
+This runs 11 tests across bash, zsh, and fish covering:
+- Hook installation into the correct RC file
+- Config rebuild when a source file is touched
+- No rebuild when nothing changed
+- Idempotent installs (running twice doesn't duplicate the hook)
+- Generated config contains all profiles from all source files
+
+Docker images used: `bash:latest`, `zshusers/zsh:latest`, `purefish/docker-fish:latest`.
 
 ## Limitations
 

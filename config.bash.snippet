@@ -1,0 +1,7 @@
+# Auto-rebuild ~/.aws/config from ~/.aws/config.d/ if any source file is newer
+if [ -d ~/.aws/config.d ]; then
+  if [ ! -f ~/.aws/config ] || [ -n "$(find ~/.aws/config.d -newer ~/.aws/config -print -quit 2>/dev/null)" ]; then
+    cat ~/.aws/config.d/* > ~/.aws/config
+    echo "aws: rebuilt ~/.aws/config from config.d/"
+  fi
+fi
