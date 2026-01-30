@@ -1,5 +1,5 @@
 # This file is managed by https://github.com/awesome-foundation/aws-cli-config-d
 # Do not edit manually. Make changes in ~/.aws/config.d/ instead.
 
-[default]
-region=us-east-1
+# [default]
+# region=us-east-1

@@ -83,7 +83,7 @@ test_bash_config_content() {
         ./install.sh > /dev/null 2>&1
         grep -q "\[profile acme-dev\]" "$HOME/.aws/config" &&
         grep -q "\[profile globex-sandbox\]" "$HOME/.aws/config" &&
-        grep -q "\[default\]" "$HOME/.aws/config"
+        grep -q "managed by" "$HOME/.aws/config"
     '
 }
 
