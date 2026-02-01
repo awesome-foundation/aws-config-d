@@ -557,6 +557,60 @@ test_list_shows_disabled_files() {
     '
 }
 
+test_disable_rebuilds_immediately() {
+    docker run --rm -v "$SCRIPT_DIR":/src:ro bash:latest bash -c '
+        cp -r /src /work && cd /work
+        HOME=/tmp/fakehome && export HOME
+        mkdir -p "$HOME"
+        touch "$HOME/.bashrc"
+        ./install.sh > /dev/null 2>&1
+        export PATH="$HOME/.local/bin:$PATH"
+
+        echo "[profile acme-dev]" > "$HOME/.aws/config.d/acme-corp"
+        aws-config-d force > /dev/null 2>&1
+        grep -q "\[profile acme-dev\]" "$HOME/.aws/config" || exit 1
+
+        aws-config-d disable acme-corp > /dev/null 2>&1
+        if grep -q "\[profile acme-dev\]" "$HOME/.aws/config"; then exit 1; fi
+    '
+}
+
+test_enable_rebuilds_immediately() {
+    docker run --rm -v "$SCRIPT_DIR":/src:ro bash:latest bash -c '
+        cp -r /src /work && cd /work
+        HOME=/tmp/fakehome && export HOME
+        mkdir -p "$HOME"
+        touch "$HOME/.bashrc"
+        ./install.sh > /dev/null 2>&1
+        export PATH="$HOME/.local/bin:$PATH"
+
+        echo "[profile acme-dev]" > "$HOME/.aws/config.d/disabled/acme-corp"
+        aws-config-d force > /dev/null 2>&1
+        if grep -q "\[profile acme-dev\]" "$HOME/.aws/config"; then exit 1; fi
+
+        aws-config-d enable acme-corp > /dev/null 2>&1
+        grep -q "\[profile acme-dev\]" "$HOME/.aws/config"
+    '
+}
+
+test_rm_rebuilds_immediately() {
+    docker run --rm -v "$SCRIPT_DIR":/src:ro bash:latest bash -c '
+        cp -r /src /work && cd /work
+        HOME=/tmp/fakehome && export HOME
+        mkdir -p "$HOME"
+        touch "$HOME/.bashrc"
+        ./install.sh > /dev/null 2>&1
+        export PATH="$HOME/.local/bin:$PATH"
+
+        echo "[profile acme-dev]" > "$HOME/.aws/config.d/acme-corp"
+        aws-config-d force > /dev/null 2>&1
+        grep -q "\[profile acme-dev\]" "$HOME/.aws/config" || exit 1
+
+        aws-config-d rm acme-corp > /dev/null 2>&1
+        if grep -q "\[profile acme-dev\]" "$HOME/.aws/config"; then exit 1; fi
+    '
+}
+
 # --- example profile tests ---
 
 test_fresh_install_copies_examples() {
@@ -600,6 +654,119 @@ test_examples_not_rendered_into_config() {
         # .example content should not appear in rendered config
         if grep -q "acme" "$HOME/.aws/config"; then exit 1; fi
         grep -q "\[profile real-org\]" "$HOME/.aws/config"
+    '
+}
+
+# --- verbose tests ---
+
+test_verbose_nothing_to_do() {
+    docker run --rm -v "$SCRIPT_DIR":/src:ro bash:latest bash -c '
+        cp -r /src /work && cd /work
+        HOME=/tmp/fakehome && export HOME
+        mkdir -p "$HOME"
+        touch "$HOME/.bashrc"
+        ./install.sh > /dev/null 2>&1
+        export PATH="$HOME/.local/bin:$PATH"
+
+        output=$(aws-config-d -v auto 2>&1)
+        echo "$output" | grep -q "nothing to do"
+    '
+}
+
+test_verbose_newer_source() {
+    docker run --rm -v "$SCRIPT_DIR":/src:ro bash:latest bash -c '
+        cp -r /src /work && cd /work
+        HOME=/tmp/fakehome && export HOME
+        mkdir -p "$HOME"
+        touch "$HOME/.bashrc"
+        ./install.sh > /dev/null 2>&1
+        export PATH="$HOME/.local/bin:$PATH"
+
+        sleep 1
+        touch "$HOME/.aws/config.d/00-defaults"
+        output=$(aws-config-d -v auto 2>&1)
+        echo "$output" | grep -q "newer than config"
+    '
+}
+
+test_verbose_drift_skip() {
+    docker run --rm -v "$SCRIPT_DIR":/src:ro bash:latest bash -c '
+        cp -r /src /work && cd /work
+        HOME=/tmp/fakehome && export HOME
+        mkdir -p "$HOME"
+        touch "$HOME/.bashrc"
+        ./install.sh > /dev/null 2>&1
+        export PATH="$HOME/.local/bin:$PATH"
+
+        echo "# sneaky edit" >> "$HOME/.aws/config"
+        sleep 1
+        touch "$HOME/.aws/config.d/00-defaults"
+        output=$(aws-config-d -v auto 2>&1)
+        echo "$output" | grep -q "drift detected"
+    '
+}
+
+test_verbose_no_config_d() {
+    docker run --rm -v "$SCRIPT_DIR":/src:ro bash:latest bash -c '
+        cp -r /src /work && cd /work
+        HOME=/tmp/fakehome && export HOME
+        mkdir -p "$HOME"
+        export PATH="$HOME/.local/bin:$PATH"
+        mkdir -p "$HOME/.local/bin"
+        cp /work/bin/aws-config-d "$HOME/.local/bin/"
+        chmod +x "$HOME/.local/bin/aws-config-d"
+
+        output=$(aws-config-d -v auto 2>&1)
+        echo "$output" | grep -q "does not exist"
+    '
+}
+
+test_auto_detects_manual_source_change() {
+    docker run --rm -v "$SCRIPT_DIR":/src:ro bash:latest bash -c '
+        cp -r /src /work && cd /work
+        HOME=/tmp/fakehome && export HOME
+        mkdir -p "$HOME"
+        touch "$HOME/.bashrc"
+        ./install.sh > /dev/null 2>&1
+        export PATH="$HOME/.local/bin:$PATH"
+
+        # add a profile and force build
+        echo "[profile acme-dev]" > "$HOME/.aws/config.d/acme-corp"
+        aws-config-d force > /dev/null 2>&1
+
+        # manually move to disabled (bypassing the command)
+        mv "$HOME/.aws/config.d/acme-corp" "$HOME/.aws/config.d/disabled/acme-corp"
+        output=$(aws-config-d auto 2>&1)
+        echo "$output" | grep -q "aws: rebuilt" || exit 1
+        if grep -q "\[profile acme-dev\]" "$HOME/.aws/config"; then exit 1; fi
+    '
+}
+
+test_verbose_after_command() {
+    docker run --rm -v "$SCRIPT_DIR":/src:ro bash:latest bash -c '
+        cp -r /src /work && cd /work
+        HOME=/tmp/fakehome && export HOME
+        mkdir -p "$HOME"
+        touch "$HOME/.bashrc"
+        ./install.sh > /dev/null 2>&1
+        export PATH="$HOME/.local/bin:$PATH"
+
+        output=$(aws-config-d auto -v 2>&1)
+        echo "$output" | grep -q "nothing to do"
+    '
+}
+
+test_verbose_long_flag() {
+    docker run --rm -v "$SCRIPT_DIR":/src:ro bash:latest bash -c '
+        cp -r /src /work && cd /work
+        HOME=/tmp/fakehome && export HOME
+        mkdir -p "$HOME"
+        touch "$HOME/.bashrc"
+        ./install.sh > /dev/null 2>&1
+        export PATH="$HOME/.local/bin:$PATH"
+
+        output=$(aws-config-d --verbose auto 2>&1)
+        echo "$output" | grep -q "nothing to do"
     '
 }
 
@@ -729,12 +896,25 @@ run_test "enable: restores from disabled/" test_enable_from_disabled_dir
 run_test "enable: restores from .off suffix" test_enable_from_off_suffix
 run_test "disable: prevents disabling 00-defaults" test_disable_prevents_00_defaults
 run_test "list: shows disabled files" test_list_shows_disabled_files
+run_test "disable: rebuilds config immediately" test_disable_rebuilds_immediately
+run_test "enable: rebuilds config immediately" test_enable_rebuilds_immediately
+run_test "rm: rebuilds config immediately" test_rm_rebuilds_immediately
 
 echo ""
 echo "=== example profiles ==="
 run_test "example: fresh install copies .example files" test_fresh_install_copies_examples
 run_test "example: not copied when user files exist" test_examples_not_copied_when_user_files_exist
 run_test "example: .example files not rendered into config" test_examples_not_rendered_into_config
+
+echo ""
+echo "=== verbose ==="
+run_test "auto: detects manual source list change" test_auto_detects_manual_source_change
+run_test "verbose: shows nothing-to-do reason" test_verbose_nothing_to_do
+run_test "verbose: shows which source is newer" test_verbose_newer_source
+run_test "verbose: shows drift skip reason" test_verbose_drift_skip
+run_test "verbose: works when config.d missing" test_verbose_no_config_d
+run_test "verbose: flag works after command" test_verbose_after_command
+run_test "verbose: --verbose long flag works" test_verbose_long_flag
 
 echo ""
 echo "=== rm ==="

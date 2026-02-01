@@ -1,11 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+VERBOSE=false
+args=()
+for arg in "$@"; do
+    case "$arg" in
+        -v|--verbose) VERBOSE=true ;;
+        *) args+=("$arg") ;;
+    esac
+done
+set -- "${args[@]+${args[@]}}"
+
+_verbose() { [ "$VERBOSE" = true ] && echo "aws: [verbose] $*" >&2 || true; }
+
 CONFIG=~/.aws/config
 CONFIG_D=~/.aws/config.d
 HASH_FILE="$CONFIG_D/.config.sha256"
+SOURCES_HASH_FILE="$CONFIG_D/.sources.sha256"
 
 _hash() { { sha256sum "$1" 2>/dev/null || shasum -a 256 "$1"; } | cut -d' ' -f1; }
+_hash_string() { printf '%s' "$1" | { sha256sum 2>/dev/null || shasum -a 256; } | cut -d' ' -f1; }
 
 _sources() {
     # List enabled config files: skip dotfiles, *.off, *.example, and directories
@@ -151,6 +165,7 @@ _rebuild() {
     # shellcheck disable=SC2086
     cat $sources > "$CONFIG"
     _hash "$CONFIG" > "$HASH_FILE"
+    _hash_string "$sources" > "$SOURCES_HASH_FILE"
     echo "aws: rebuilt $CONFIG from config.d/"
 }
 
@@ -171,7 +186,10 @@ _check_drift() {
 }
 
 _help() {
-    echo "Usage: aws-config-d <command>"
+    echo "Usage: aws-config-d [-v] <command>"
+    echo ""
+    echo "Options:"
+    echo "  -v, --verbose    Show what auto is checking and why it skips"
     echo ""
     echo "Commands:"
     echo "  auto             Check for changes and rebuild if needed"
@@ -186,21 +204,46 @@ _help() {
 case "${1:-help}" in
     auto)
         # Called from shell hooks — only rebuild if sources are newer
-        if [ ! -d "$CONFIG_D" ]; then exit 0; fi
+        if [ ! -d "$CONFIG_D" ]; then
+            _verbose "config.d/ does not exist at $CONFIG_D — skipping"
+            exit 0
+        fi
         if [ ! -f "$CONFIG" ]; then
+            _verbose "no config at $CONFIG — building for the first time"
             _rebuild
             exit 0
         fi
         needs_rebuild=false
-        for f in $(_sources); do
-            if [ "$f" -nt "$CONFIG" ]; then
+        sources=$(_sources)
+        # Check if the set of enabled sources changed since last build
+        current_sources_hash=$(_hash_string "$sources")
+        if [ -f "$SOURCES_HASH_FILE" ]; then
+            expected_sources_hash=$(cat "$SOURCES_HASH_FILE")
+            if [ "$current_sources_hash" != "$expected_sources_hash" ]; then
+                _verbose "enabled sources changed — rebuild needed"
                 needs_rebuild=true
-                break
             fi
-        done
-        if [ "$needs_rebuild" = true ]; then
+        else
+            _verbose "no sources hash on record — rebuild needed"
+            needs_rebuild=true
+        fi
+        # Also check mtimes for content changes within the same set of files
+        if [ "$needs_rebuild" = false ]; then
+            for f in $sources; do
+                if [ "$f" -nt "$CONFIG" ]; then
+                    _verbose "$(basename "$f") is newer than config — rebuild needed"
+                    needs_rebuild=true
+                    break
+                fi
+            done
+        fi
+        if [ "$needs_rebuild" = false ]; then
+            _verbose "sources unchanged and all older than config — nothing to do"
+        else
             if _check_drift; then
                 _rebuild
+            else
+                _verbose "drift detected — skipping rebuild (reconcile and force)"
             fi
         fi
         ;;
@@ -220,6 +263,7 @@ case "${1:-help}" in
             exit 1
         fi
         _enable "$2"
+        _rebuild
         ;;
     disable)
         if [ -z "${2:-}" ]; then
@@ -227,6 +271,7 @@ case "${1:-help}" in
             exit 1
         fi
         _disable "$2"
+        _rebuild
         ;;
     rm|remove)
         if [ -z "${2:-}" ]; then
@@ -234,6 +279,7 @@ case "${1:-help}" in
             exit 1
         fi
         _rm "$2"
+        _rebuild
         ;;
     help|-h|--help)
         _help
